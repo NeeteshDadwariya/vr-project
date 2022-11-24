@@ -17,3 +17,5 @@ Cmd: compileComputeKernel
 Cmd: compileComputeKernel
   error: 2 plat 14 at (29): failed to open source file: 'Packages/com.unity.postprocessing/PostProcessing/Shaders/StdLib.hlsl'
   api=14 insize=2098 outsize=0 ok=0
+
+Quitting shader compiler process
