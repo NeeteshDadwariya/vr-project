@@ -1,114 +1,246 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿// CREATED BY PEERPLAY
+// WWW.PEERPLAY.NL
+// v1.8
+
 using UnityEngine;
+using System.Collections;
+using UnityEngine.Audio;
 
-[RequireComponent(typeof(AudioSource))]
-public class AudioPeer : MonoBehaviour
-{
-    public static float[] _samples = new float[512];
-    public static float[] _freqBand = new float[8];
-    public static float[] _bandBuffer = new float[8];
-    float[] _bufferDecrease = new float[8];
+[RequireComponent (typeof (AudioSource))]
+public class AudioPeer : MonoBehaviour {
+	AudioSource _audioSource;
+	public bool _listenToAudioListener;
 
-    float[] _freqBandHighest = new float[8];
-    public static float[] _audioBand = new float[8];
-    public static float[] _audioBandBuffer=new float[8];
-    AudioSource _audiosource;
+	//FFT values
+	private float[] _samplesLeft = new float[512];
+	private float[] _samplesRight = new float[512];
 
-    
-    public static float _Amplitude, _AmplitudeBuffer;
-    float _AmplitudeHighest;
-    public float _audioProfile;
+	private float[] _freqBand = new float[8];
+	private float[] _bandBuffer = new float[8];
+	private float[] _bufferDecrease = new float[8];
+	private float[] _freqBandHighest = new float[8];
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        _audiosource = GetComponent<AudioSource>();
-        AudioProfile(_audioProfile);
-    }
+	//audio band values
+	[HideInInspector]
+	public static float[] _audioBand, _audioBandBuffer;
 
-    // Update is called once per frame
-    void Update()
-    {
-        GetSpectrumAudioSource();
-        MakeFrequencyBand();
-        BandBuffer();
-        CreateAudioBands();
-        GetAmplitude();
-    }
-    void AudioProfile(float audioProfile)
-    {
-        for(int i=0;i<8; i++)
-        {
-            _freqBandHighest[i] = audioProfile;
-        }
-    }
-    void GetAmplitude()
-    {
-        float _currentAmplitude = 0;
-        float _currentAmplitudeBuffer = 0;
-        for(int i = 0; i < 8; i++)
-        {
-            _currentAmplitude += _audioBand[i];
-            _currentAmplitudeBuffer += _audioBandBuffer[i];
-        }
-        if (_currentAmplitude > _AmplitudeHighest)
-        {
-            _AmplitudeHighest = _currentAmplitude;
-        }
-        _Amplitude = _currentAmplitude / _AmplitudeHighest;
-        _AmplitudeBuffer = _currentAmplitudeBuffer / _AmplitudeHighest;
-    }
-    void CreateAudioBands()
-    {
-        for(int i = 0; i < 8; i++)
-        {
-            if (_freqBand[i] > _freqBandHighest[i])
-            {
-                _freqBandHighest[i] = _freqBand[i];
-            }
-            _audioBand[i] = (_freqBand[i] / _freqBandHighest[i]);
-            _audioBandBuffer[i] = (_bandBuffer[i] / _freqBandHighest[i]);
-        }
-    }
-    void GetSpectrumAudioSource()
-    {
-        _audiosource.GetSpectrumData(_samples, 0, FFTWindow.Blackman);
-    }
 
-    void BandBuffer()
-    {
-        for(int g = 0; g < 8; g++)
-        {
-            if (_freqBand[g] > _bandBuffer[g])
-            {
-                _bandBuffer[g] = _freqBand[g];
-                _bufferDecrease[g] = 0.005f;
-            }
-            if (_freqBand[g] < _bandBuffer[g])
-            {
-                _bandBuffer[g] -= _bufferDecrease[g];
-                _bufferDecrease[g] *= 1.2f;
-            }
-        }
-    }
-    void MakeFrequencyBand()
-    {
-        int count = 0;
-        for(int i = 0; i < 8; i++)
-        {
-            float average = 0;
-            int sampleCount = (int)Mathf.Pow(2, i) * 2;
-            if (i == 7)
-                sampleCount += 2;
-            for(int j = 0; j < sampleCount; j++)
-            {
-                average += _samples[count] * (count + 1);
-                count++;
-            }
-            average /= count;
-            _freqBand[i] = average*10;
-        }
+	//Amplitude variables
+	[HideInInspector]
+	public static float _Amplitude, _AmplitudeBuffer;
+	private float _AmplitudeHighest;
+	//audio profile
+	public float _audioProfile;
 
-    }
+	//stereo channels
+	public enum _channel {Stereo, Left, Right};
+	public _channel channel = new _channel ();
+
+	//Audio64
+	float[] _freqBand64 = new float[64];
+	float[] _bandBuffer64 = new float[64];
+	float[] _bufferDecrease64 = new float[64];
+	float[] _freqBandHighest64 = new float[64];
+	//audio band64 values
+	[HideInInspector]
+	public static float[] _audioBand64, _audioBandBuffer64;
+
+	public static bool  _resetAudioProfile;
+
+
+
+
+	void Awake()
+	{
+		DontDestroyOnLoad (this.gameObject);
+	}
+
+	// Use this for initialization
+	void Start () {
+		_audioBand = new float[8];
+		_audioBandBuffer = new float[8];
+		_audioBand64 = new float[64];
+		_audioBandBuffer64 = new float[64];
+
+		_audioSource = GetComponent<AudioSource> ();
+		AudioProfile (_audioProfile);
+	}
+
+	// Update is called once per frame
+	void Update () {
+		if (_audioSource.clip != null) {
+			GetSpectrumAudioSource ();
+			MakeFrequencyBands ();
+			MakeFrequencyBands64 ();
+			BandBuffer ();
+			BandBuffer64 ();
+			CreateAudioBands ();
+			CreateAudioBands64 ();
+			GetAmplitude ();
+
+		}
+			
+	}
+
+
+	public void AudioProfile(float audioProfile)
+	{
+		for (int i = 0; i < 8; i++) {
+			_freqBandHighest [i] = audioProfile;
+		}
+	}
+
+	void GetAmplitude()
+	{
+		float _CurrentAmplitude = 0;
+		float _CurrentAmplitudeBuffer = 0;
+		for (int i = 0; i < 8; i++) {
+			_CurrentAmplitude += _audioBand [i];
+			_CurrentAmplitudeBuffer += _audioBandBuffer [i];
+		}
+		if (_CurrentAmplitude > _AmplitudeHighest) {
+			_AmplitudeHighest = _CurrentAmplitude;
+		}
+		_Amplitude = _CurrentAmplitude / _AmplitudeHighest;
+		_AmplitudeBuffer = _CurrentAmplitudeBuffer / _AmplitudeHighest;
+	}
+
+	void CreateAudioBands()
+	{
+		for (int i = 0; i < 8; i++) 
+		{
+			if (_freqBand [i] > _freqBandHighest [i]) {
+				_freqBandHighest [i] = _freqBand [i];
+			}
+			_audioBand [i] = Mathf.Clamp((_freqBand [i] / _freqBandHighest [i]), 0, 1);
+			_audioBandBuffer [i] = Mathf.Clamp((_bandBuffer [i] / _freqBandHighest [i]), 0, 1);
+		}
+	}
+
+	void CreateAudioBands64()
+	{
+		for (int i = 0; i < 64; i++) 
+		{
+			if (_freqBand64 [i] > _freqBandHighest64 [i]) {
+				_freqBandHighest64 [i] = _freqBand64 [i];
+			}
+			_audioBand64 [i] = Mathf.Clamp((_freqBand64 [i] / _freqBandHighest64 [i]), 0, 1);
+			_audioBandBuffer64 [i] = Mathf.Clamp((_bandBuffer64 [i] / _freqBandHighest64 [i]), 0, 1);
+		}
+	}
+
+	void GetSpectrumAudioSource()
+	{
+		if (_listenToAudioListener) {
+			AudioListener.GetSpectrumData (_samplesLeft, 0, FFTWindow.Hanning);
+			AudioListener.GetSpectrumData (_samplesRight, 1, FFTWindow.Hanning);
+		}
+		if (!_listenToAudioListener) {
+			_audioSource.GetSpectrumData (_samplesLeft, 0, FFTWindow.Hanning);
+			_audioSource.GetSpectrumData (_samplesRight, 1, FFTWindow.Hanning);
+		}
+	}
+
+
+	void BandBuffer()
+	{
+		for (int g = 0; g < 8; ++g) {
+			if (_freqBand [g] > _bandBuffer [g]) {
+				_bandBuffer [g] = _freqBand [g];
+				_bufferDecrease [g] = 0.005f;
+			}
+
+			if ((_freqBand [g] < _bandBuffer [g]) && (_freqBand [g] > 0)) {
+				_bandBuffer[g] -= _bufferDecrease [g];
+				_bufferDecrease [g] *= 1.2f;
+			}
+
+		}
+	}
+
+	void BandBuffer64()
+	{
+		for (int g = 0; g < 64; ++g) {
+			if (_freqBand64 [g] > _bandBuffer64 [g]) {
+				_bandBuffer64 [g] = _freqBand64 [g];
+				_bufferDecrease64 [g] = 0.005f;
+			}
+
+			if ((_freqBand64 [g] < _bandBuffer64 [g]) && (_freqBand64 [g] > 0)) {
+				_bandBuffer64[g] -= _bufferDecrease64 [g];
+				_bufferDecrease64 [g] *= 1.2f;
+			}
+
+		}
+	}
+
+	void MakeFrequencyBands()
+	{
+		int count = 0;
+
+		for (int i = 0; i < 8; i++) {
+
+
+			float average = 0;
+			int sampleCount = (int)Mathf.Pow (2, i) * 2;
+
+			if (i == 7) {
+				sampleCount += 2;
+			}
+			for (int j = 0; j < sampleCount; j++) {
+				if (channel == _channel.Stereo) {
+					average += (_samplesLeft [count] + _samplesRight [count]) * (count + 1);
+				}
+				if (channel == _channel.Left) {
+					average += _samplesLeft [count] * (count + 1);
+				}
+				if (channel == _channel.Right) {
+					average += _samplesRight [count] * (count + 1);
+				}
+				count++;
+
+			}
+
+			average /= count;
+
+			_freqBand [i] = average * 10;
+
+		}
+	}
+	void MakeFrequencyBands64()
+	{
+		int count = 0;
+		int sampleCount = 1;
+		int power = 0;
+		for (int i = 0; i < 64; i++) {
+
+			float average = 0;
+
+			if (i == 16 || i == 32 || i == 40 || i == 48 || i == 56) 
+			{
+				sampleCount = (int)Mathf.Pow (2, power) ;
+				if (power == 3) { sampleCount -= 2;}
+				power++;
+			}
+
+			for (int j = 0; j < sampleCount; j++) {
+				if (channel == _channel.Stereo) {
+					average += (_samplesLeft [count] + _samplesRight [count]) * (count + 1);
+				}
+				if (channel == _channel.Left) {
+					average += _samplesLeft [count] * (count + 1);
+				}
+				if (channel == _channel.Right) {
+					average += _samplesRight [count] * (count + 1);
+				}
+				count++;
+
+			}
+
+			average /= count;
+
+			_freqBand64 [i] = average * 80;
+
+		}
+	}
 }
